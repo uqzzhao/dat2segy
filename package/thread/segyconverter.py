@@ -410,7 +410,7 @@ class SegyConverterThread(QThread):
 
             base_name = new_timestamp.strftime("%Y%m%d_%H%M%S")
 
-            filename = os.path.join(self.outpath, base_name + '.sgy')  
+            filename = transform_separator(os.path.join(self.outpath, base_name + '.sgy'))  
 
             pssegy.writeSegy(filename, Data= trace, dt = 1000, STHin=STH, SHin=SH)
 

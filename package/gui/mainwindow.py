@@ -211,7 +211,7 @@ class MainWindow(QMainWindow):
     def finishProgress(self, completion, str):   
         #self.completion = self.getCompletionStatus(completion)
         self.setProgressLabel(str)
-        self.runButton.setEnabled(True)
+        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(True)
 
 
     def cancelConversion(self):
