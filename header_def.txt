@@ -1,0 +1,114 @@
+﻿Geophone model:geospace omni-2400
+54
+struct HeadInfo
+{
+	s16 day;                  // 日
+	s16 month;                // 月
+	s16 year;                 // 年 2001-2999
+	s16 hour;                 // 时
+	s16 minute;               // 分
+	s8 geo[20];               // 工作地区 - 地名
+	s8 standby0;              // 备用
+	u8 met;                   // 记录方法代码:
+	
+
+	s8 standby1[20];          // 备用
+	u8 lst;          		  
+	s8 pro;                   // ADC量化代码:	
+	u8 kan;                   // number of channels 通道数
+	s8 standby2;			  // 备用
+	s16 ab1;				  
+	s16 ab2;				  
+	s16 ab3;				  
+	s16 res;                
+	float Tok;
+	float Voltage;
+
+	//32-71
+
+	u8 Tgu;                   
+	s8 Ddt;					  
+	u8 Tpi;			          
+
+
+	s8 Ngu;					  
+	s32 C_Prd;				  
+	s32 C_Pls;				  
+	s8 standby7[8];			  
+	s16 Nom;				  // 记录号
+	s16 cugb_sps;			//采样率
+	s16 cugb_ch0gain;			//通道0增益	 
+	s16 cugb_ch1gain;           //通道1增益
+	s16 cugb_ch2gain;			//通道2增益
+	s16 cugb_ch3gain;         //通道3增益
+	s8 Fam[16];				  
+
+	// 72-119
+
+	s32 Lps;				  // number of points in record 记录的数据点数
+	s8 standby10[6];		  // 备用
+	s8 standby11;			  // 备用
+	s8 Npb;					  
+	s16 Izm;				  
+	s16 Ntk;				  
+	s8 standby13[2];		  // 备用
+	s16 Lgr;				  
+	s16 Ntik;				  
+	s16 Nst;				  // 仪器号
+	s8 standby16[6];		  // 备用
+	s8 standby17;			  // 备用
+	u8 Vup;			          // 
+	s8 Com[48];				  // string of the comment 注释行
+
+	//120-199
+
+	s16 Isw[3][30];			  
+	//200-379
+
+	s16 Prog_n;				
+	s32 Fn_id;				
+	s16 Pd_16;				
+	s32 Pd_24;				
+	s16 Smode;				
+	s16 S_ext;				
+	s16 Pac;					
+	s32 T_gps;				
+	s32 T_kp;				
+
+	//380-405
+
+	s8 standby18[18];			// 备用
+	s8 standby19[88];			
+	
+	// 406-511
+
+	struct ChInfo
+	{
+		u8 Idk;					// 通道名称代码
+		s8 standby0;
+		u8 Uko;					
+		s8  Ufl;				// 测站号
+		s16 Pkt;				// 测点号
+		s16 Prf;				// 测线号
+		
+		s16 Damp;				
+		s16 Ddac;				
+		s8 standby3[2];
+		
+		s16 Razm;				
+		s16 Nvt;				
+		s16 Ubal;				
+		float X;				//gps.lon
+		float Y;				//gps.lat
+		float Z;				//gps.altitude
+		float Ecs;				
+		s8 standby5[4];
+		float k1;				
+		float k10;				
+		float k100;				
+		float k1000;			
+		float Ugl;				
+		float Er;				
+	} __attribute__ ((packed,aligned(1))) channel[24];  // 64*24=1536
+	//512-2047
+} __attribute__ ((packed,aligned(1))) ;

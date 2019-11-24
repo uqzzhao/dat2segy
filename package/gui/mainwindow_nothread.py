@@ -1,3 +1,14 @@
+# -*- coding: utf-8 -*-
+"""
+Data format conversion from .dat to SEG-Y format.
+
+@author:     Zhengguang Zhao
+@copyright:  Copyright 2016-2019, Zhengguang Zhao.
+@license:    MIT
+@contact:    zg.zhao@outlook.com
+
+
+"""
 
 import os
 

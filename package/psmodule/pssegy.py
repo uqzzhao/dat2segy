@@ -1,21 +1,14 @@
+# -*- coding: utf-8 -*-
 """
-A python module for reading/writing/manipuating 
-SEG-Y formatted filed
-segy.readSegy                : Read SEGY file
-segy.getSegyHeader          : Get SEGY header 
-segy.getSegyTraceHeader     : Get SEGY Trace header 
-segy.getAllSegyTraceHeaders : Get all SEGY Trace headers 
-segy.getSegyTrace            : Get SEGY Trace heder and trace data for one trace
-segy.writeSegy                : Write a data to a SEGY file
-segy.writeSegyStructure     : Writes a segy data structure to a SEGY file
-segy.getValue         : Get a value from a binary string
-segy.ibm2ieee        : Convert IBM floats to IEEE
+Data format conversion from .dat to SEG-Y format.
+
+@author:     Zhengguang Zhao
+@copyright:  Copyright 2016-2019, Zhengguang Zhao.
+@license:    MIT
+@contact:    zg.zhao@outlook.com
+
 
 """
-#
-# pssegy : A Python module for reading and writing SEG-Y formatted data
-#
-
 
 from __future__ import division
 from __future__ import print_function
@@ -28,20 +21,165 @@ import datetime
 import numpy as np
 import pandas as pd
 
-import segyio
+
 
 from PyQt5.QtWidgets import QMessageBox
 
-
 from ..utils.utils import load_dict, transform_separator
 
-# SOME GLOBAL PARAMETERS
-version = '2018.1'  
-verbose = 1
 
-# endian='>' # Big Endian  
-# endian='<' # Little Endian
-# endian='=' # Native
+
+endian='>' # Big Endian  
+endian='<' # Little Endian
+endian='=' # Native
+
+
+NUMPY_DTYPES = {'ibm':     np.dtype('>f4'),
+
+                'int32':   np.dtype('>i4'),
+
+                'int16':   np.dtype('>i2'),
+
+                'uint16':   np.dtype('>u2'),
+
+                'float32': np.dtype('>f4'),
+
+                'int8':    np.dtype('>i1')}
+
+
+
+
+SEGY_ASCII_REEL_HEADER_BYTES=3200
+SEGY_ASCII_REEL_HEADER_RECORD_BYTES=80
+SEGY_BIN_REEL_HEADER_BYTES=400
+# TRACES_HEADER_TYPE = np.dtype( [ ('tracl' , '>i4'), ('tracr' , '>i4'), ('fldr' , '>i4'), ('tracf' , '>i4'), ('ep' , '>i4'), ('cdp' , '>i4'), ('cdpt' , '>i4'), ('trid' , '>u2'), ('nvs' , '>u2'), ('nhs' , '>u2'), ('duse' , '>u2'), ('offset' , '>i4'), ('gelev' , '>i4'), ('selev' , '>i4'), ('sdepth' , '>i4'), ('gdel' , '>i4'), ('sdel' , '>i4'), ('swdep' , '>i4'), ('gwdep' , '>i4'), ('scalel' , '>u2'), ('scalco' , '>u2'), ('sx' , '>i4'), ('sy' , '>i4'), ('gx' , '>i4'), ('gy' , '>i4'), ('counit' , '>u2'), ('wevel' , '>u2'), ('swevel' , '>u2'), ('sut' , '>u2'), ('gut' , '>u2'), ('sstat' , '>u2'), ('gstat' , '>u2'), ('tstat' , '>u2'), ('laga' , '>u2'), ('lagb' , '>u2'), ('delrt' , '>u2'), ('muts' , '>u2'), ('mute' , '>u2'), ('ns' , '>u2'), ('dt' , '>u2'), ('gain' , '>u2'), ('igc' , '>u2'), ('igi' , '>u2'), ('corr' , '>u2'), ('sfs' , '>u2'), ('sfe' , '>u2'), ('slen' , '>u2'), ('styp' , '>u2'), ('stas' , '>u2'), ('stae' , '>u2'), ('tatyp' , '>u2'), ('afilf' , '>u2'), ('afils' , '>u2'), ('nofilf' , '>u2'), ('nofils' , '>u2'), ('lcf' , '>u2'), ('hcf' , '>u2'), ('lcs' , '>u2'), ('hcs' , '>u2'), ('year' , '>u2'), ('day' , '>u2'), ('hour' , '>u2'), ('minute' , '>u2'), ('sec' , '>u2'), ('timbas' , '>u2'), ('trwf' , '>u2'), ('grnors' , '>u2'), ('grnofr' , '>u2'), ('grnlof' , '>u2'), ('gaps' , '>u2'), ('ofrav' , '>u2'), ('d1' , '>f4'), ('f1' , '>f4'), ('d2' , '>f4'), ('f2' , '>f4'), ('ungpow' , '>i4'), ('unscale' , '>i4'), ('ntr' , '>i4'), ('mark' , '>u2'), ('shortpad' , '>u2'), ('unass' , 'a28') ])
+
+VOLUME_HEADER_TYPE = np.dtype([('Job', '>i4'),\
+                            ('Line', '>i4'),\
+                            ('Reel', '>i4'),\
+                            ('DataTracePerEnsemble', '>i2'),\
+                            ('AuxiliaryTracePerEnsemble', '>i2'),\
+                            ('dt', '>u2'),\
+                            ('dtOrig', '>u2'),\
+                            ('ns', '>u2'),\
+                            ('nsOrig', '>u2'),\
+                            ('DataSampleFormat', '>i2'),\
+                            ('EnsembleFold', '>i2'),\
+                            ('TraceSorting', '>i2'),\
+                            ('VerticalSumCode', '>i2'),\
+                            ('SweepFrequencyStart', '>i2'),\
+                            ('SweepFrequencyEnd', '>i2'),\
+                            ('SweepLength', '>i2'),\
+                            ('SweepType', '>i2'),\
+                            ('SweepChannel', '>i2'),\
+                            ('SweepTaperlengthStart', '>i2'),\
+                            ('SweepTaperLengthEnd', '>i2'),\
+                            ('TaperType', '>i2'),\
+                            ('CorrelatedDataTraces', '>i2'),\
+                            ('BinaryGain', '>i2'),\
+                            ('AmplitudeRecoveryMethod', '>i2'),\
+                            ('MeasurementSystem', '>i2'),\
+                            ('ImpulseSignalPolarity', '>i2'),\
+                            ('VibratoryPolarityCode', '>i2')                            
+                            ])
+
+
+TRACES_HEADER_TYPE = np.dtype( [ ('TraceSequenceLine' , '>i4'), \
+                                ('TraceNumber' , '>i4'), \
+                                ('FieldRecord' , '>i4'), \
+                                 ('TraceSequenceFile' , '>i4'),\
+                                 ('EnergySourcePoint' , '>i4'), \
+                                 ('cdp' , '>i4'), \
+                                ('cdpTrace' , '>i4'), \
+                                ('TraceIdentificationCode' , '>u2'), \
+                                ('NSummedTraces' , '>u2'), \
+                                ('NStackedTraces' , '>u2'), \
+                                ('DataUse' , '>u2'),\
+                                ('offset' , '>i4'), \
+                                ('ReceiverGroupElevation' , '>i4'), \
+                                ('SourceSurfaceElevation' , '>i4'), \
+                                ('SourceDepth' , '>i4'), \
+                                ('ReceiverDatumElevation' , '>i4'), \
+                                ('SourceDatumElevation' , '>i4'), \
+                                ('SourceWaterDepth' , '>i4'), \
+                                ('GroupWaterDepth' , '>i4'),\
+                                ('ElevationScalar' , '>i2'), \
+                                ('SourceGroupScalar' , '>i2'), \
+                                ('SourceX' , '>i4'), \
+                                ('SourceY' , '>i4'), \
+                                ('GroupX' , '>i4'), \
+                                ('GroupY' , '>i4'), \
+                                ('CoordinateUnits' , '>u2'),\
+                                ('WeatheringVelocity' , '>u2'), \
+                                ('SubWeatheringVelocity' , '>u2'), \
+                                ('SourceUpholeTime' , '>u2'), \
+                                ('GroupUpholeTime' , '>u2'), \
+                                ('SourceStaticCorrection' , '>u2'), \
+                                ('GroupStaticCorrection' , '>u2'), \
+                                ('TotalStaticApplied' , '>u2'), \
+                                ('LagTimeA' , '>i2'), \
+                                ('LagTimeB' , '>i2'), \
+                                ('DelayRecordingTime' , '>i2'), \
+                                ('MuteTimeStart' , '>u2'), \
+                                ('MuteTimeEND' , '>u2'), \
+                                ('ns' , '>u2'), \
+                                ('dt' , '>u2'), \
+                                ('GainType' , '>u2'), \
+                                ('InstrumentGainConstant' , '>u2'), \
+                                ('InstrumentInitialGain' , '>u2'), \
+                                ('Correlated' , '>u2'), \
+                                ('SweepFrequenceStart' , '>u2'), \
+                                ('SweepFrequenceEnd' , '>u2'), \
+                                ('SweepLength' , '>u2'), \
+                                ('SweepType' , '>u2'), \
+                                ('SweepTraceTaperLengthStart' , '>u2'), \
+                                ('SweepTraceTaperLengthEnd' , '>u2'), \
+                                ('TaperType' , '>u2'), \
+                                ('AliasFilterFrequency' , '>u2'), \
+                                ('AliasFilterSlope' , '>u2'), \
+                                ('NotchFilterFrequency' , '>u2'), \
+                                ('NotchFilterSlope' , '>u2'), \
+                                ('LowCutFrequency' , '>u2'), \
+                                ('HighCutFrequency' , '>u2'), \
+                                ('LowCutSlope' , '>u2'), \
+                                ('HighCutSlope' , '>u2'), \
+                                ('YearDataRecorded' , '>u2'), \
+                                ('DayOfYear' , '>u2'), \
+                                ('HourOfDay' , '>u2'), \
+                                ('MinuteOfHour' , '>u2'), \
+                                ('SecondOfMinute' , '>u2'), \
+                                ('TimeBaseCode' , '>u2'), \
+                                ('TraceWeightningFactor' , '>u2'), \
+                                ('GeophoneGroupNumberRoll1' , '>u2'), \
+                                ('GeophoneGroupNumberFirstTraceOrigField' , '>u2'), \
+                                ('GeophoneGroupNumberLastTraceOrigField' , '>u2'), \
+                                ('GapSize' , '>u2'), \
+                                ('OverTravel' , '>u2'),\
+                                ('cdpX' , '>i4'),\
+                                ('cdpY' , '>i4'),\
+                                ('Inline3D' , '>i4'),\
+                                ('Crossline3D' , '>i4'),\
+                                ('ShotPoint' , '>i4'),\
+                                ('ShotPointScalar' , '>i2'),\
+                                ('TraceValueMeasurementUnit' , '>u2'),\
+                                ('TransductionConstantMantissa' , '>i4'),\
+                                ('TransductionConstantPower' , '>u2'),\
+                                ('TransductionUnit' , '>u2'),\
+                                ('TraceIdentifier' , '>u2'),\
+                                ('ScalarTraceHeader' , '>i2'),\
+                                ('SourceType' , '>u2'),\
+                                ('SourceEnergyDirectionMantissa' , '>i4'),\
+                                ('SourceEnergyDirectionExponent' , '>u2'),\
+                                ('SourceMeasurementMantissa' , '>i4'),\
+                                ('SourceMeasurementExponent' , '>u2'),\
+                                ('SourceMeasurementUnit' , '>u2'),\
+                                ('UnassignedInt1' , '>i4'),\
+                                ('UnassignedInt2' , '>i4')])
+
+
+
+
+
 
 l_int = struct.calcsize('i')
 l_uint = struct.calcsize('I')
@@ -129,6 +267,7 @@ SH_def["DataSampleFormat"]["datatype"][1] = {
 SH_def["EnsembleFold"] = {"pos": 3226, "type": "int16", "def": 0}
 SH_def["TraceSorting"] = {"pos": 3228, "type": "int16", "def": 0}
 SH_def["VerticalSumCode"] = {"pos": 3230, "type": "int16", "def": 0}
+SH_def["SweepFrequencyStart"] = {"pos": 3232, "type": "int16", "def": 0}
 SH_def["SweepFrequencyEnd"] = {"pos": 3234, "type": "int16", "def": 0}
 SH_def["SweepLength"] = {"pos": 3236, "type": "int16", "def": 0}
 SH_def["SweepType"] = {"pos": 3238, "type": "int16", "def": 0}
@@ -365,124 +504,10 @@ STH_def["UnassignedInt2"] = {"pos": 236, "type": "int32"}  # 'int32');  %236
 
 
 ##############
-# %% FUNCTIONS
-
-def image(Data,  SH={}, maxval=-1):
+def getDefaultSegyHeader(ntraces=100, ns=100, dt = 1000):
     """
-    image(Data,SH,maxval)
-    Image segy Data
-    """
-    import matplotlib.pylab as plt
+    Function codes modified from https://github.com/cultpenguin/segypy
 
-    if (maxval<=0):
-        Dmax = np.max(Data)
-        maxval = -1*maxval*Dmax
-
-    if 'time' in SH:
-        t = SH['time']
-        ntraces = SH['ntraces']
-        ns = SH['ns']
-    else:
-        ns = Data.shape[0]
-        t = np.arange(ns)
-        ntraces = Data.shape[1]
-    x = np.arange(ntraces)+1
-
-    print(maxval)
-    plt.pcolor(x, t, Data, vmin=-1*maxval, vmax=maxval)
-    plt.colorbar()
-    plt.axis('normal')
-    plt.xlabel('Trace number')
-    if 'time' in SH:
-        plt.ylabel('Time (ms)')
-    else:
-        plt.ylabel('Sample number')
-    if 'filename' in SH:
-        plt.title(SH['filename'])
-    plt.gca().invert_yaxis()
-
-    #plt.grid(True)
-    plt.show()
-
-
-# %%
-def wiggle(Data, SH={}, maxval=-1, skipt=1, lwidth=.5, x=[], t=[], gain=1, type='VA', color='black', ntmax=1e+9):
-    """
-    wiggle(Data,SH)
-    """
-    import matplotlib.pylab as plt
-    import numpy as np
-    import copy
-    
-    yl='Sample number'
-    
-    ns = Data.shape[0]
-    ntraces = Data.shape[1]
-
-    if ntmax<ntraces:
-        skipt=int(np.floor(ntraces/ntmax))
-        if skipt<1:
-                skipt=1
-
-
-    if len(x)==0:
-        x=range(0, ntraces)
-
-    if len(t)==0:
-        t=range(0, ns)
-    else:
-        yl='Time  [s]'
-    
-    
-    # overrule time form SegyHeader
-    if 'time' in SH:
-        t = SH['time']
-        yl='Time  [s]'
-    
-        
-    dx = x[1]-x[0]    
-    if (maxval<=0):
-        Dmax = np.nanmax(Data)
-        maxval = -1*maxval*Dmax
-        #print('pssegy.wiggle: maxval = %g' % maxval)
-        
-    fig, (ax1) = plt.subplots(1, 1)
-    # fig = plt.gcf()
-    # ax1 = plt.gca()
-    
-    for i in range(0, ntraces, skipt):
-        # use copy to avoid truncating the data
-        trace = copy.copy(Data[:, i])
-        trace[0] = 0
-        trace[-1] = 0
-        ax1.plot(x[i] + gain * skipt * dx * trace / maxval, t, color=color, linewidth=lwidth)
-        
-        if type=='VA':
-            for a in range(len(trace)):
-                if (trace[a] < 0):
-                    trace[a] = 0
-                    # pylab.fill(i+Data[:,i]/maxval,t,color='k',facecolor='g')
-            #ax1.fill(x[i] + dx * Data[:, i] / maxval, t, 'k', linewidth=0, color=color)
-            ax1.fill(x[i] + gain * skipt * dx * trace / (maxval), t, 'k', linewidth=0, color=color)
-
-    ax1.grid(True)
-    ax1.invert_yaxis()
-    plt.ylim([np.max(t),np.min(t)])
-    
-
-    plt.xlabel('Trace number')
-    plt.ylabel(yl)
-    if 'filename' in SH:
-        plt.title(SH['filename'])
-    ax1.set_xlim(-1, ntraces)
-    plt.show()
-    print('wiggle plot')
-
-
-# %%
-def getDefaultSegyHeader(ntraces=100, ns=100):
-    """
-    SH=getDefaultSegyHeader()
     """
     # INITIALIZE DICTIONARY   
     SH = {"Job": {"pos": 3200, "type": "int32", "def": 0}}
@@ -498,6 +523,7 @@ def getDefaultSegyHeader(ntraces=100, ns=100):
 
     SH["ntraces"] = ntraces
     SH["ns"] = ns
+    SH["dt"] = dt
 
     return SH
 
@@ -505,7 +531,8 @@ def getDefaultSegyHeader(ntraces=100, ns=100):
 # %%
 def getDefaultSegyTraceHeaders(ntraces=100, ns=100, dt=1000):
     """
-    SH=getDefaultSegyTraceHeader()
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
     # INITIALIZE DICTIONARY
     STH = {"TraceSequenceLine": {"pos": 0, "type": "int32"}}
@@ -530,9 +557,10 @@ def getDefaultSegyTraceHeaders(ntraces=100, ns=100, dt=1000):
 
 
 # %%
-def getSegyTraceHeader(SH, THN='cdp', data='none', endian='>'):  # modified by A Squelch
+def getSegyTraceHeader(SH, THN='cdp', data='none', endian='>'):  
     """
-    getSegyTraceHeader(SH,TraceHeaderName)
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
 
     bps = getBytePerSample(SH)
@@ -548,24 +576,22 @@ def getSegyTraceHeader(SH, THN='cdp', data='none', endian='>'):  # modified by A
     thv = np.zeros(ntraces)
     for itrace in range(1, ntraces + 1, 1):
         i = itrace
+        pos = THpos + 3600 + (SH["ns"] * bps + 240) * (itrace - 1)
 
-        pos = THpos + 3600 + (SH["ns"] * bps + 240) * (itrace - 1);
+       
 
-        txt = "getSegyTraceHeader : Reading trace header " + THN + " " + str(itrace) + " of " + str(
-            ntraces) + " " + str(pos)
-
-        #printverbose(txt, 20);
         thv[itrace - 1], index = getValue(data, pos, THformat, endian, 1)
-        txt = "getSegyTraceHeader : " + THN + "=" + str(thv[itrace - 1])
-        #printverbose(txt, 30);
+      
+        
 
     return thv
 
 
 # %%
-def getLastSegyTraceHeader(SH, THN='cdp', data='none', endian='>'):  # added by A Squelch
+def getLastSegyTraceHeader(SH, THN='cdp', data='none', endian='>'): 
     """
-    getLastSegyTraceHeader(SH,TraceHeaderName)
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
 
     bps = getBytePerSample(SH)
@@ -583,20 +609,26 @@ def getLastSegyTraceHeader(SH, THN='cdp', data='none', endian='>'):  # added by 
 
     txt = "getLastSegyTraceHeader : Reading last trace header " + THN + " " + str(pos)
 
-    #printverbose(txt, 20);
+   
     thv, index = getValue(data, pos, THformat, endian, 1)
     txt = "getLastSegyTraceHeader : " + THN + "=" + str(thv)
-    #printverbose(txt, 30);
+    
 
     return thv
 
 
 # %%
 def getAllSegyTraceHeaders(SH, data='none'):
+
+    """
+    Function codes modified from https://github.com/cultpenguin/segypy
+
+    """
+
     SegyTraceHeaders = {'filename': SH["filename"]}
 
-    #printverbose('getAllSegyTraceHeaders : trying to get all segy trace headers', 2)
-
+    
+    
     if (data == 'none'):
         data = open(SH["filename"], 'rb').read()
 
@@ -604,25 +636,27 @@ def getAllSegyTraceHeaders(SH, data='none'):
         sth = getSegyTraceHeader(SH, key, data)
         SegyTraceHeaders[key] = sth
         txt = "getAllSegyTraceHeaders :  " + key
-        #printverbose(txt, 10)
+        
 
     return SegyTraceHeaders
 
 
 # %%
-def readSegy(filename, endian='>', rev = None, dsf = None):  # modified by A Squelch
+def readSegy(filename, endian='>', rev = None, dsf = None):  
     """
     Data,SegyHeader,SegyTraceHeaders=getSegyHeader(filename)
+
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
 
     Data = None
     SH = None
     SegyTraceHeaders = None
 
-    #printverbose("readSegy : Trying to read " + filename, 0)
-
-    
-    data = open(filename, 'rb').read()
+   
+    fs = open(filename, 'rb')
+    data = fs.read()
 
     filesize = len(data)
 
@@ -631,51 +665,173 @@ def readSegy(filename, endian='>', rev = None, dsf = None):  # modified by A Squ
     bps = getBytePerSample(SH)
 
     ntraces = (filesize - 3600) / (SH['ns'] * bps + 240)
-    #    ntraces = 100
+   
 
-    #printverbose("readSegy : Length of data : " + str(filesize), 2)
-
-    # SH["ntraces"] = np.int(ntraces)
+   
     SH["ntraces"] = int(ntraces)
 
-    ndummy_samples=240/bps  # modified by A Squelch
-    # printverbose("readSegy : ndummy_samples="+str(ndummy_samples),6)  # modified by A Squelch
-    #printverbose("readSegy : ntraces=" + str(ntraces) + " nsamples=" + str(SH['ns']), 2)
-
+    ndummy_samples=240/bps  
+   
     # GET TRACE
     index = 3600
     nd = int((filesize - 3600) / bps)
 
-    #printverbose("filesize=%d" % filesize)
-    #printverbose("bps=%5d" % bps)
-    #printverbose("nd=%5d" % nd)
-
-    # modified by A Squelch
-    # this portion replaced by call to new function: readSegyData
-    Data, SH, SegyTraceHeaders = readSegyData(data, SH, nd, bps, index, endian)
-
-    #printverbose("readSegy :  Read segy data", 2)  # modified by A Squelch
 
 
+    Data, SH, SegyTraceHeaders = loadSegyData(fs, SH, bps, endian)
+
+   
 
     return Data, SH, SegyTraceHeaders
 
-# %%
-def readSegyData(data, SH, nd, bps, index, endian='>'):  # added by A Squelch
+
+
+
+def make_dtype(data_sample_format): 
+
     """
-    Data,SegyHeader,SegyTraceHeaders=readSegyData(data,SH,nd,bps,index)
+    Convert a SEG Y data sample format to a compatible numpy dtype.
+
+    Note :
+
+        IBM float data sample formats ('ibm') will correspond to IEEE float data types.
+
+    Args:
+
+        data_sample_format: A data sample format string.
+
+    Returns:
+
+        A numpy.dtype instance.
+
+
+    Raises:
+
+        ValueError: For unrecognised data sample format strings.
+
+    """
+
+    try:
+
+        return NUMPY_DTYPES[data_sample_format]
+
+    except KeyError:
+
+        raise ValueError("Unknown data sample format string {!r}".format(data_sample_format))
+
+def parseDataBuffer(fs, dsf = 'float32', endian = '>'):
+
+    fs.seek(0)
+
+    TRACES_TRACE_TYPE =  NUMPY_DTYPES[dsf]
+    
+    TRACES_TRACE_TYPE.newbyteorder(endian)
+    TRACES_HEADER_TYPE.newbyteorder(endian)
+
+    TRACES_HEADER_BYTES = TRACES_HEADER_TYPE.itemsize
+    TRACES_TRACE_BYTES = TRACES_TRACE_TYPE.itemsize
+    
+    headers=[]
+    traces=[]
+    nt=0
+    ns = 0
+    # first we need to jump over the headers:
+    fs.seek(SEGY_ASCII_REEL_HEADER_BYTES+SEGY_BIN_REEL_HEADER_BYTES)
+
+    while True:
+        l=fs.read(TRACES_HEADER_BYTES)
+        if len(l) == TRACES_HEADER_BYTES:
+            rec=np.frombuffer(l, TRACES_HEADER_TYPE)
+            ns=rec['ns'][0]
+            #print(ns)
+            trcstr=fs.read(ns *TRACES_TRACE_BYTES )
+            headers.append(rec)
+            traces.append(np.frombuffer( trcstr, TRACES_TRACE_TYPE ))
+            nt+=1
+        else:
+            break
+    #print("%s record read."%nt)
+
+    
+
+    headers=np.stack(headers).reshape(-1)
+    traces=np.stack(traces, axis = 1)
+
+    if dsf == 'int8':
+    
+        for i in range(ns):
+            for j in range(nt):
+                if traces[i][j] > 128:
+                    traces[i][j] = traces[i][j] - 256
+
+    return traces, headers
+
+
+def loadSegyData(data, SH, bps, endian='>'):  # added by A Squelch
+    """
+    Function codes modified from https://github.com/cultpenguin/segypy
+    
     This function separated out from readSegy so that it can also be
-    called from other external functions - by A Squelch.
+    called from other external functions.
+
     """
 
     # Calulate number of dummy samples needed to account for Trace Headers
     ndummy_samples = int(240 / bps)
-    #printverbose("readSegyData : ndummy_samples=" + str(ndummy_samples), 6)
+   
 
+    # READ ALL DATA EXCEPT FOR SEGY HEADER
+    
+
+    revision = SH["SegyFormatRevisionNumber"]
+    if (revision == 100):
+        revision = 1
+    if (revision == 256):  
+        revision = 1
+
+    dsf = SH["DataSampleFormat"]
+
+
+    DataDescr = SH_def["DataSampleFormat"]["descr"][revision][dsf]
+    
+
+    if (SH["DataSampleFormat"] == 1):        
+        Data, HD = parseDataBuffer(data, 'ibm', endian)
+    elif (SH["DataSampleFormat"] == 2):
+        Data, HD = parseDataBuffer(data, 'int32', endian)
+    elif (SH["DataSampleFormat"] == 3):
+        Data, HD = parseDataBuffer(data, 'int16', endian)
+    elif (SH["DataSampleFormat"] == 5):
+        Data, HD = parseDataBuffer(data, 'float32', endian)
+    elif (SH["DataSampleFormat"] == 8):
+        Data, HD = parseDataBuffer(data, 'int8', endian)
+    else:
+        print("loadSegyData : DSF=" + str(SH["DataSampleFormat"]) + ", NOT SUPORTED", 2)
+
+    STH = {}
+    for key in TRACES_HEADER_TYPE.names:       
+
+        STH[key] = HD[key]
+
+    return Data, SH, STH
+
+
+# %%
+def readSegyData(data, SH, nd, bps, index, endian='>'):  
+    """
+   
+    Function codes modified from https://github.com/cultpenguin/segypy
+
+
+    """
+
+    # Calulate number of dummy samples needed to account for Trace Headers
+    ndummy_samples = int(240 / bps)
+    
     # READ ALL SEGY TRACE HEADRES
     STH = getAllSegyTraceHeaders(SH, data)
 
-    #printverbose("readSegyData : Reading segy data", 1)
+    
 
     # READ ALL DATA EXCEPT FOR SEGY HEADER
     # Data = np.zeros((SH['ns'],ntraces))
@@ -690,50 +846,31 @@ def readSegyData(data, SH, nd, bps, index, endian='>'):  # added by A Squelch
 
 
     DataDescr = SH_def["DataSampleFormat"]["descr"][revision][dsf]
-    # except KeyError:
-    #     # print("")
-    #     # print("  An error has ocurred interpreting a SEGY binary header key")
-    #     # print("  Please check the Endian setting for this file: ", SH["filename"])
-    #     # sys.exit()
-
-    #     msg = "An error has ocurred interpreting a SEGY binary header key.\nPlease check the Endian setting for this file: " + SH["filename"]
-        
-    #     QMessageBox.critical(None,"Error", msg,
-    #         QMessageBox.Ok)
-
-    #     return 
-
-    #printverbose("readSegyData : SEG-Y revision = " + str(revision), 1)
-    #printverbose("readSegyData : DataSampleFormat=" + str(dsf) + "(" + DataDescr + ")", 1)
+    
 
     if (SH["DataSampleFormat"] == 1):
-        #printverbose("readSegyData : Assuming DSF=1, IBM FLOATS", 2)
+        
         Data1 = getValue(data, index, 'ibm', endian, nd)
     elif (SH["DataSampleFormat"] == 2):
-        #printverbose("readSegyData : Assuming DSF=" + str(SH["DataSampleFormat"]) + ", 32bit INT", 2)
         Data1 = getValue(data, index, 'l', endian, nd)
     elif (SH["DataSampleFormat"] == 3):
-        #printverbose("readSegyData : Assuming DSF=" + str(SH["DataSampleFormat"]) + ", 16bit INT", 2)
         Data1 = getValue(data, index, 'h', endian, nd)
     elif (SH["DataSampleFormat"] == 5):
-        #printverbose("readSegyData : Assuming DSF=" + str(SH["DataSampleFormat"]) + ", IEEE", 2)
         Data1 = getValue(data, index, 'float', endian, nd)
     elif (SH["DataSampleFormat"] == 8):
-        #printverbose("readSegyData : Assuming DSF=" + str(SH["DataSampleFormat"]) + ", 8bit CHAR", 2)
         Data1 = getValue(data, index, 'B', endian, nd)
     else:
-        printverbose("readSegyData : DSF=" + str(SH["DataSampleFormat"]) + ", NOT SUPORTED", 2)
+        print("readSegyData : DSF=" + str(SH["DataSampleFormat"]) + ", NOT SUPORTED", 2)
 
     Data = Data1[0]
 
-    #printverbose("readSegyData : - reshaping", 2)
-    #printverbose("ns=" + str(SH['ns']),-2)
+    
     Data = np.reshape(np.array(Data), (SH['ntraces'], SH['ns'] + ndummy_samples))
     
 
-    #printverbose("readSegyData : - stripping header dummy data", 2)
+    
     Data = Data[:, ndummy_samples:(SH['ns'] + ndummy_samples)]
-    #printverbose("readSegyData : - transposing", 2)
+    
     Data = np.transpose(Data)
 
     # SOMEONE NEEDS TO IMPLEMENT A NICER WAY DO DEAL WITH DSF=8
@@ -743,17 +880,16 @@ def readSegyData(data, SH, nd, bps, index, endian='>'):  # added by A Squelch
                 if Data[i][j] > 128:
                     Data[i][j] = Data[i][j] - 256
 
-    #printverbose("readSegyData : Finished reading segy data", 1)
+   
 
     return Data, SH, STH
 
 
 # %%
-def getSegyTrace(SH, itrace, endian='>'):  # modified by A Squelch
+def getSegyTrace(SH, itrace, endian='>'):  
     """
-    SegyTraceHeader,SegyTraceData=getSegyTrace(SegyHeader,itrace)
-        itrace : trace number to read
-        THIS DEF IS NOT UPDATED. NOT READY TO USE
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
     data = open(SH["filename"], 'rb').read()
 
@@ -762,7 +898,7 @@ def getSegyTrace(SH, itrace, endian='>'):  # modified by A Squelch
     # GET TRACE HEADER
     index = 3200 + (itrace - 1) * (240 + SH['ns'] * bps)
     SegyTraceHeader = []
-    # print index
+    
 
     # GET TRACE
     index = 3200 + (itrace - 1) * (240 + SH['ns'] * bps) + 240
@@ -771,9 +907,10 @@ def getSegyTrace(SH, itrace, endian='>'):  # modified by A Squelch
 
 
 # %%
-def getSegyHeader(filename, endian='>', rev = None, dsf = None):  # modified by A Squelch
+def getSegyHeader(filename, endian='>', rev = None, dsf = None):  
     """
-    SegyHeader=getSegyHeader(filename)
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
 
     data = open(filename, 'rb').read()
@@ -796,7 +933,7 @@ def getSegyHeader(filename, endian='>', rev = None, dsf = None):  # modified by 
         SegyHeader[key], index = getValue(data, pos, format, endian)
 
         txt = "SegyHeader[%s] = %f" % (key, SegyHeader[key])
-        #printverbose(txt, 2)
+       
 
     if dsf != None:
         SegyHeader["DataSampleFormat"] = dsf    
@@ -809,7 +946,7 @@ def getSegyHeader(filename, endian='>', rev = None, dsf = None):  # modified by 
     SegyHeader["time"]=np.arange(SegyHeader['ns']) * SegyHeader['dt'] / 1e+6
 
 
-    #printverbose('getSegyHeader : succesfully read ' + filename, 1)
+   
 
     return SegyHeader
 
@@ -817,24 +954,16 @@ def getSegyHeader(filename, endian='>', rev = None, dsf = None):  # modified by 
 # %%
 def writeSegy(filename, Data, dt=1000, STHin={}, SHin={}):
     """
-    writeSegy(filename,Data,dt)
-    Write SEGY 
-    See also readSegy
-    (c) 2005, Thomas Mejer Hansen
-    MAKE OPTIONAL INPUT FOR ALL SEGYHTRACEHEADER VALUES
-    
-    """
+    Function codes modified from https://github.com/cultpenguin/segypy
 
-    #printverbose("writeSegy : Trying to write " + filename, 0)
+    """
 
     N = Data.shape
     ns = N[0]
     ntraces = N[1]
-    # print(ntraces)
-    # print(ns)
-
+    
     if not len(SHin):
-        SH = getDefaultSegyHeader(ntraces, ns)
+        SH = getDefaultSegyHeader(ntraces, ns, dt)
     else:
         SH = SHin
     if not len(STHin):
@@ -847,15 +976,13 @@ def writeSegy(filename, Data, dt=1000, STHin={}, SHin={}):
 
 
 # %%
-def writeSegyStructure(filename, Data, SH, STH, endian='>'):  # modified by A Squelch
+def writeSegyStructure(filename, Data, SH, STH, endian='>'):  
     """
-    writeSegyStructure(filename,Data,SegyHeader,SegyTraceHeaders)
-    Write SEGY file using SEG-Y data structures
-    See also readSegy
-    
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
 
-    #printverbose("writeSegyStructure : Trying to write " + filename, 0)
+    
 
     f = open(filename, 'wb')
 
@@ -864,20 +991,10 @@ def writeSegyStructure(filename, Data, SH, STH, endian='>'):  # modified by A Sq
     dsf = SH["DataSampleFormat"]
     if (revision == 100):
         revision = 1
-    if (revision == 256):  # added by A Squelch
+    if (revision == 256):  
         revision = 1
 
-    # try:  # block added by A Squelch
-    #     DataDescr = SH_def["DataSampleFormat"]["descr"][str(revision)][str(dsf)]
-    # except KeyError:
-    #     print("")
-    #     print("  An error has ocurred interpreting a SEGY binary header key")
-    #     print("  Please check the Endian setting for this file: ", SH["filename"])
-    #     sys.exit()
-
-    #printverbose("writeSegyStructure : SEG-Y revision = " + str(revision), 1)
-    #printverbose("writeSegyStructure : DataSampleFormat=" + str(dsf) + "(" + DataDescr + ")", 1)
-
+   
     # WRITE SEGY HEADER
 
     for key in SH_def.keys():
@@ -885,12 +1002,11 @@ def writeSegyStructure(filename, Data, SH, STH, endian='>'):  # modified by A Sq
         format = SH_def[key]["type"]
         value = SH[key]
 
-        #        SegyHeader[key],index = putValue(value,f,pos,format,endian);
+        
         putValue(value, f, pos, format, endian)
 
         txt = str(pos) + " " + str(format) + "  Reading " + key + "=" + str(value)
-    # +"="+str(SegyHeader[key])
-    # printverbose(txt,-1)
+   
 
     # SEGY TRACES
 
@@ -901,7 +1017,7 @@ def writeSegyStructure(filename, Data, SH, STH, endian='>'):  # modified by A Sq
 
     for itrace in range(SH['ntraces']):
         index = 3600 + itrace * sizeT
-        #printverbose('Writing Trace #' + str(itrace + 1) + '/' + str(SH['ntraces']), 10)
+    
         # WRITE SEGY TRACE HEADER
         for key in STH_def.keys():
             pos = index + STH_def[key]["pos"]
@@ -909,7 +1025,7 @@ def writeSegyStructure(filename, Data, SH, STH, endian='>'):  # modified by A Sq
             value = STH[key][itrace]
             txt = str(pos) + " " + str(format) + "  Writing " + key + "=" + str(value)
 
-            #printverbose(txt, 40)
+            
             putValue(value, f, pos, format, endian)
 
             # Write Data
@@ -921,18 +1037,16 @@ def writeSegyStructure(filename, Data, SH, STH, endian='>'):  # modified by A Sq
 
     f.close
 
-    # return segybuffer
+   
 
-def convert2Segy(filename, Data, SH, STH, endian='>'):  # modified by A Squelch
+def convert2Segy(filename, Data, SH, STH, endian='>'):  
+
     """
-    writeSegyStructure(filename,Data,SegyHeader,SegyTraceHeaders)
-    Write SEGY file using SEG-Y data structures
-    See also readSegy
-      
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
 
-    #printverbose("writeSegyStructure : Trying to write " + filename, 0)
-
+   
     f = open(filename, 'wb')
 
     # VERBOSE INF
@@ -946,9 +1060,9 @@ def convert2Segy(filename, Data, SH, STH, endian='>'):  # modified by A Squelch
    
 
     # WRITE SEGY Texual File HEADER (3200 bytes)
-    f.seek(0)
-    import ebcdic
-    f.write(TFH.encode('cp1141'))
+    # f.seek(0)
+    # import ebcdic
+    # f.write(TFH.encode('cp1141'))
 
     # WRITE SEGY HEADER
 
@@ -957,7 +1071,7 @@ def convert2Segy(filename, Data, SH, STH, endian='>'):  # modified by A Squelch
         format = SH_def[key]["type"]
         value = SH[key]
 
-        #        SegyHeader[key],index = putValue(value,f,pos,format,endian);
+        
         putValue(value, f, pos, format, endian)
 
         txt = str(pos) + " " + str(format) + "  Reading " + key + "=" + str(value)
@@ -972,7 +1086,7 @@ def convert2Segy(filename, Data, SH, STH, endian='>'):  # modified by A Squelch
 
     for itrace in range(SH['ntraces']):
         index = 3600 + itrace * sizeT
-        #printverbose('Writing Trace #' + str(itrace + 1) + '/' + str(SH['ntraces']), 10)
+        
         # WRITE SEGY TRACE HEADER
         for key in STH_def.keys():
             pos = index + STH_def[key]["pos"]
@@ -980,10 +1094,10 @@ def convert2Segy(filename, Data, SH, STH, endian='>'):  # modified by A Squelch
             value = STH[key][itrace]
             txt = str(pos) + " " + str(format) + "  Writing " + key + "=" + str(value)
 
-            #printverbose(txt, 40)
+            
             putValue(value, f, pos, format, endian)
 
-            # Write Data
+        # Write Data
         cformat = endian + ctype
         for s in range(SH['ns']):
             strVal = struct.pack(cformat, Data[s, itrace])
@@ -1036,7 +1150,8 @@ def mergeSegy(filename, filelist):
 # %%
 def putValue(value, fileid, index, ctype='l', endian='>', number=1):
     """
-    putValue(data,index,ctype,endian,number)
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
     if (ctype == 'l') | (ctype == 'long') | (ctype == 'int32'):
         size = l_long
@@ -1070,8 +1185,7 @@ def putValue(value, fileid, index, ctype='l', endian='>', number=1):
 
     cformat = endian + ctype * number
 
-    #printverbose('putValue : cformat :  "' + cformat + '" ctype="' + ctype + '"'  + '   value="' + value + '"', -1)
-    #printverbose('cformat="%s", ctype="%s", value=%f' % (cformat,ctype,value), 40 )
+    
     strVal = struct.pack(cformat, value)
     fileid.seek(index)
     fileid.write(strVal)
@@ -1082,7 +1196,8 @@ def putValue(value, fileid, index, ctype='l', endian='>', number=1):
 # %%
 def getValue(data, index, ctype='l', endian='>', number=1):
     """
-    getValue(data,index,ctype,endian,number)
+    Function codes modified from https://github.com/cultpenguin/segypy
+
     """
     if (ctype == 'l') | (ctype == 'long') | (ctype == 'int32'):
         size = l_long
@@ -1113,9 +1228,7 @@ def getValue(data, index, ctype='l', endian='>', number=1):
 
     index_end = index + size * number
 
-    #printverbose("index=%d, number=%d, size=%d, ctype=%s" % (index, number, size, ctype), 8);
-    #printverbose("index, index_end = " + str(index) + "," + str(index_end), 9)
-
+    
     if (ctype == 'ibm'):
         # ASSUME IBM FLOAT DATA
         Value = list(range(int(number)))
@@ -1130,35 +1243,26 @@ def getValue(data, index, ctype='l', endian='>', number=1):
         cformat = 'f' * number
         cformat = endian + ctype * number
 
-        #printverbose("getValue : cformat : '" + cformat + "'", 11)
+       
 
         Value = struct.unpack(cformat, data[index:index_end])
 
     if (ctype == 'B'):
-        #printverbose('getValue : Ineficient use of 1byte Integer...', -1)
+        
 
         vtxt = 'getValue : ' + 'start=' + str(index) + ' size=' + str(size) + ' number=' + str(
             number) + ' Value=' + str(Value) + ' cformat=' + str(cformat)
-        #printverbose(vtxt, 20)
-
+        
     if number == 1:
         return Value[0], index_end
     else:
         return Value, index_end
 
 
-# %%
-def print_version():
-    print('PSInsight version is ', version)
 
 
-# %%
-def printverbose(txt, level=1):
-    if level <= verbose:
-        print('PSInsight ' + version + ': ', txt)
 
 
-# %%
 ##############
 # MISC FUNCTIONS
 def ibm2Ieee(ibm_float):
@@ -1199,13 +1303,17 @@ def ibm2ieee2(ibm_float):
 
 
 def getBytePerSample(SH):
+    """
+    Function codes modified from https://github.com/cultpenguin/segypy
+
+    """
 
 
     revision = SH["SegyFormatRevisionNumber"]
     
     if (revision == 100):
         revision = 1
-    if (revision == 256):  # added by A Squelch
+    if (revision == 256):  
         revision = 1
 
 
@@ -1213,18 +1321,7 @@ def getBytePerSample(SH):
 
     bps = SH_def["DataSampleFormat"]["bps"][revision][dsf]
     
-    # except KeyError:
-    #     # print("")
-    #     # print("  An error has ocurred interpreting a SEGY binary header key")
-    #     # print("  Please check the Endian setting for this file: ", SH["filename"])
-    #     # sys.exit()
-
-    #     msg = "An error has ocurred interpreting a SEGY binary header key.\nPlease check the Endian setting for this file: " + SH["filename"]
-        
-    #     QMessageBox.critical(None,"Error", msg, QMessageBox.Ok)
-
- 
-    #printverbose("getBytePerSample :  bps=" + str(bps), 21);
+   
 
     return bps
 
@@ -1235,6 +1332,9 @@ def parse_trace_headers(segyfile, n_traces):
     Column names are defined from segyio internal tracefield
     One row per trace
     '''
+
+    import segyio
+
     # Get all header keys
     headers = segyio.tracefield.keys
     # Initialize dataframe with trace id as index and headers as columns
@@ -1251,6 +1351,8 @@ def parse_binary_header(segyfile, segyio_list, pssegy_list):
     Column names are defined from segyio internal tracefield
     One row per trace
     '''
+
+    import segyio
     
     bin_header = segyfile.bin
     n_traces = segyfile.tracecount
@@ -1277,6 +1379,8 @@ def parse_text_header(segyfile):
     '''
     Format segy text header into a readable, clean dict
     '''
+    import segyio
+    
     raw_header = segyio.tools.wrap(segyfile.text[0])
     # Cut on C*int pattern
     cut_header = re.split(r'C ', raw_header)[1::]
@@ -1405,11 +1509,92 @@ class Segy:
         with open(filename, 'wb') as f:
             pickle.dump(dic, f)
 
+    def toSegyFile_(self, filename,  endian='>'):  
+        
+        """
+        Deprecated.
+
+        Write the SEG-Y data contained in Segy class to a standard Rev1 SEG-Y file with .sgy as its suffix.
+
+        :param filename: absulute file path of the dict file to be written down.
+        :type filename: str.
+        :param filename: endian setting for the file to be written down, with little endian as '<' and big endian as '>'.
+        :type filename: str.
+
+        """  
+
+        Data = self.traceData
+        
+        SH = self.volumeHeader
+        STH = self.traceHeader
+
+        f = open(filename, 'wb')
+
+        # VERBOSE INF
+        revision = SH["SegyFormatRevisionNumber"]
+        dsf = SH["DataSampleFormat"]
+        revision = 1
+
+
+
+    
+
+        # WRITE SEGY Texual File HEADER (3200 bytes)
+        f.seek(0)
+        
+        f.write(TFH.encode('cp1141'))
+
+        # WRITE SEGY HEADER
+
+        for key in SH_def.keys():
+            pos = SH_def[key]["pos"]
+            format = SH_def[key]["type"]
+            value = SH[key]
+
+            #        SegyHeader[key],index = putValue(value,f,pos,format,endian);
+            putValue(value, f, pos, format, endian)
+
+            txt = str(pos) + " " + str(format) + "  Reading " + key + "=" + str(value)
+        
+
+        # SEGY TRACES
+
+        ctype = SH_def['DataSampleFormat']['datatype'][revision][dsf]
+        bps = SH_def['DataSampleFormat']['bps'][revision][dsf]
+
+        sizeT = 240 + SH['ns'] * bps
+
+        for itrace in range(SH['ntraces']):
+            index = 3600 + itrace * sizeT
+            #printverbose('Writing Trace #' + str(itrace + 1) + '/' + str(SH['ntraces']), 10)
+            # WRITE SEGY TRACE HEADER
+            for key in STH_def.keys():
+                
+                pos = index + STH_def[key]["pos"]
+                format = STH_def[key]["type"]             
+    
+                value = STH[key][itrace,0]
+                # txt = str(pos) + " " + str(format) + "  Writing " + key + "=" + str(value)
+                # print(txt)
+                putValue(value, f, pos, format, endian)
+
+                # Write Data
+            cformat = endian + ctype
+            print('cformat: ' + cformat)
+            for s in range(SH['ns']):
+                print(s)
+                strVal = struct.pack(cformat, Data[s, itrace])
+                print(strVal)
+                f.seek(index + 240 + s * struct.calcsize(cformat))
+                f.write(strVal)
+
+        f.close()
 
     
     def toSegyFile(self, filename,  endian='>'):  
         
         """
+        
         Write the SEG-Y data contained in Segy class to a standard Rev1 SEG-Y file with .sgy as its suffix.
 
         :param filename: absulute file path of the dict file to be written down.
@@ -1425,20 +1610,24 @@ class Segy:
 
         f = open(filename, 'wb')
 
-        # VERBOSE INF
-        revision = SH["SegyFormatRevisionNumber"]
-        dsf = SH["DataSampleFormat"]
-        if (revision == 100):
-            revision = 1
-        if (revision == 256):  # added by A Squelch
-            revision = 1
+       
+        # revision = SH["SegyFormatRevisionNumber"]
+        
+        revision = 1
+        dsf = 5
+        # if (revision == 100):
+        #     revision = 1
+        # if (revision == 256):  # added by A Squelch
+        #     revision = 1
+
+        
 
     
 
         # WRITE SEGY Texual File HEADER (3200 bytes)
         f.seek(0)
-        import ebcdic
-        f.write(TFH.encode('cp1141'))
+        # import ebcdic
+        # f.write(TFH.encode('cp1141'))
 
         # WRITE SEGY HEADER
 
@@ -1473,14 +1662,24 @@ class Segy:
                 #printverbose(txt, 40)
                 putValue(value, f, pos, format, endian)
 
-                # Write Data
-            cformat = endian + ctype
-            for s in range(SH['ns']):
-                strVal = struct.pack(cformat, Data[s, itrace])
-                f.seek(index + 240 + s * struct.calcsize(cformat))
-                f.write(strVal)
+            # Write Data
+            
+            # method 1: using numpy tobytes, high speed
+            cformat = endian + ctype * SH['ns']
+            arr = Data[:, itrace].tolist()
+            #arr_bytes = arr.tobytes('C')
+            strVal = struct.pack(cformat, *arr)
+            f.seek(index + 240)
+            f.write(strVal)
+            
+            # # method 2: using struct.pack for each sample point, low speed      
+            # cformat = endian + ctype               
+            # for s in range(SH['ns']):
+            #     strVal = struct.pack(cformat, Data[s, itrace])
+            #     f.seek(index + 240 + s * struct.calcsize(cformat))
+            #     f.write(strVal)
 
-        f.close
+        f.close()
 
     def setTraceData(self, data):
 
@@ -1522,7 +1721,7 @@ class Segy:
 
     def _setStats(self):
     
-        self._setSampleRate(self.traceHeader)
+        self._setSampleRate(self.volumeHeader)
         self._setComponentFlag(self.traceHeader)
         self._setDateTime(self.traceHeader)
         self._setSampleNumber(self.volumeHeader)
@@ -1705,13 +1904,16 @@ class Segy:
 
         return self.componentFlag    
 
-    def _setSampleRate(self, th):
+    def _setSampleRate(self, vh):
         '''
-        th: trace header
+        vh: volume header
 
         '''
 
-        dt = th['dt'][0]  # unit is us
+        if not len(vh):
+            dt = 1000
+
+        dt = vh['dt']  # unit is us
 
         self.dt = dt*1e-6
         self.df = 1.0/self.dt
@@ -1814,12 +2016,19 @@ class Segy:
         return pPicks, sPicks
         
 
-    def calcStaLta(self, traceData, nsta = 30, nlta = 80, method = 'recursive_sta_lta'):
+    def calcStaLta(self, traceData, nsta = 30, nlta = 80, method = 'classic_sta_lta', mode = 'continuous'):
+
+        NS, NTR = traceData.shape   
+
+        if mode == 'continuous':
+
+            traceData = traceData.reshape(-1,1, order = 'F')
 
         ns, ntr = traceData.shape
-        cfs = np.empty((ns, ntr), dtype=np.float32)            
+        cfs = np.zeros((ns, ntr), dtype=np.float32) 
             
         if method == 'classic_sta_lta':
+            
             for i in range(ntr):
                 trace = traceData[:, i]                             
                 cf = classic_sta_lta(trace, nsta, nlta)
@@ -1836,6 +2045,9 @@ class Segy:
                 trace = traceData[:, i]     
                 cf = recursive_sta_lta(trace, nsta, nlta)
                 cfs[:,i] = cf  
+
+        if mode == 'continuous':
+            cfs = cfs.reshape(NS, NTR, order = 'F')
 
         return cfs
 
